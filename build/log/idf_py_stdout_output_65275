@@ -1,0 +1,220 @@
+Command: /Users/jojunseong/.espressif/python_env/idf5.5_py3.13_env/bin/python /Users/jojunseong/esp/esp-idf/tools/idf_monitor.py -p /dev/cu.usbmodem101 -b 115200 --toolchain-prefix riscv32-esp-elf- --target esp32c3 --revision 3 --decode-panic backtrace /Users/jojunseong/esp/hello_world/build/hello_world.elf /Users/jojunseong/esp/hello_world/build/bootloader/bootloader.elf -m '/Users/jojunseong/.espressif/python_env/idf5.5_py3.13_env/bin/python' '/Users/jojunseong/esp/esp-idf/tools/idf.py' '-p' '/dev/cu.usbmodem101'
+ESP-ROM:esp32c3-api1-20210207
+Build:Feb  7 2021
+rst:0x15 (USB_UART_CHIP_RESET),boot:0xd (SPI_FAST_FLASH_BOOT)
+Saved PC:0x40382276
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fcd5820,len:0x15ac
+load:0x403cbf10,len:0xc34
+load:0x403ce710,len:0x2fd0
+entry 0x403cbf1a
+[0;32mI (24) boot: ESP-IDF v5.5.1 2nd stage bootloader[0m
+[0;32mI (24) boot: compile time Jul 27 2026 11:04:40[0m
+[0;32mI (25) boot: chip revision: v0.4[0m
+[0;32mI (25) boot: efuse block revision: v1.3[0m
+[0;32mI (28) boot.esp32c3: SPI Speed      : 80MHz[0m
+[0;32mI (32) boot.esp32c3: SPI Mode       : DIO[0m
+[0;32mI (36) boot.esp32c3: SPI Flash Size : 2MB[0m
+[0;32mI (39) boot: Enabling RNG early entropy source...[0m
+[0;32mI (44) boot: Partition Table:[0m
+[0;32mI (46) boot: ## Label            Usage          Type ST Offset   Length[0m
+[0;32mI (53) boot:  0 nvs              WiFi data        01 02 00009000 00006000[0m
+[0;32mI (59) boot:  1 phy_init         RF data          01 01 0000f000 00001000[0m
+[0;32mI (66) boot:  2 factory          factory app      00 00 00010000 00100000[0m
+[0;32mI (72) boot: End of partition table[0m
+[0;32mI (76) esp_image: segment 0: paddr=00010020 vaddr=3c020020 size=08e58h ( 36440) map[0m
+[0;32mI (89) esp_image: segment 1: paddr=00018e80 vaddr=3fc8d200 size=01254h (  4692) load[0m
+[0;32mI (91) esp_image: segment 2: paddr=0001a0dc vaddr=40380000 size=05f3ch ( 24380) load[0m
+[0;32mI (102) esp_image: segment 3: paddr=00020020 vaddr=42000020 size=176c0h ( 95936) map[0m
+[0;32mI (121) esp_image: segment 4: paddr=000376e8 vaddr=40385f3c size=070e8h ( 28904) load[0m
+[0;32mI (126) esp_image: segment 5: paddr=0003e7d8 vaddr=50000000 size=00020h (    32) load[0m
+[0;32mI (131) boot: Loaded app from partition at offset 0x10000[0m
+[0;32mI (131) boot: Disabling RNG early entropy source...[0m
+[0;32mI (146) cpu_start: Unicore app[0m
+[0;32mI (154) cpu_start: Pro cpu start user code[0m
+[0;32mI (154) cpu_start: cpu freq: 160000000 Hz[0m
+[0;32mI (154) app_init: Application information:[0m
+[0;32mI (154) app_init: Project name:     hello_world[0m
+[0;32mI (158) app_init: App version:      1[0m
+[0;32mI (162) app_init: Compile time:     Jul 27 2026 11:04:37[0m
+[0;32mI (167) app_init: ELF file SHA256:  240724cee...[0m
+[0;32mI (171) app_init: ESP-IDF:          v5.5.1[0m
+[0;32mI (175) efuse_init: Min chip rev:     v0.3[0m
+[0;32mI (179) efuse_init: Max chip rev:     v1.99 [0m
+[0;32mI (183) efuse_init: Chip rev:         v0.4[0m
+[0;32mI (187) heap_init: Initializing. RAM available for dynamic allocation:[0m
+[0;32mI (193) heap_init: At 3FC8F310 len 00030CF0 (195 KiB): RAM[0m
+[0;32mI (198) heap_init: At 3FCC0000 len 0001C710 (113 KiB): Retention RAM[0m
+[0;32mI (204) heap_init: At 3FCDC710 len 00002950 (10 KiB): Retention RAM[0m
+[0;32mI (210) heap_init: At 50000020 len 00001FC8 (7 KiB): RTCRAM[0m
+[0;32mI (216) spi_flash: detected chip: generic[0m
+[0;32mI (219) spi_flash: flash io: dio[0m
+[0;33mW (222) spi_flash: Detected size(4096k) larger than the size in the binary image header(2048k). Using the size in the binary image header.[0m
+[0;33mW (234) i2c: This driver is an old driver, please migrate your application code to adapt `driver/i2c_master.h`[0m
+[0;32mI (244) sleep_gpio: Configure to isolate all GPIO pins in sleep state[0m
+[0;32mI (250) sleep_gpio: Enable automatic switching of GPIO sleep configuration[0m
+[0;32mI (257) main_task: Started on CPU0[0m
+[0;32mI (257) main_task: Calling app_main()[0m
+[0;32mI (257) GAS_MONITOR: ADC calibration: enabled[0m
+[0;32mI (267) GAS_MONITOR: Start: baseline window=3 minutes, update interval=1 minute[0m
+[0;33mW (267) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (277) GAS_MONITOR: MQ7 raw=682.0mV filtered=682.0mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (277) GAS_MONITOR: MQ8 raw=599.0mV filtered=599.0mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (287) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (297) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (1297) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (1297) GAS_MONITOR: MQ7 raw=762.0mV filtered=698.0mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (1297) GAS_MONITOR: MQ8 raw=646.0mV filtered=608.4mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (1297) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (1307) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (2307) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (2307) GAS_MONITOR: MQ7 raw=681.0mV filtered=694.6mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (2307) GAS_MONITOR: MQ8 raw=601.0mV filtered=606.9mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (2307) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (2317) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (3317) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (3317) GAS_MONITOR: MQ7 raw=632.0mV filtered=682.1mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (3317) GAS_MONITOR: MQ8 raw=564.0mV filtered=598.3mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (3317) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (3327) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (4327) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (4327) GAS_MONITOR: MQ7 raw=800.0mV filtered=705.7mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (4327) GAS_MONITOR: MQ8 raw=668.0mV filtered=612.3mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (4327) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (4337) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (5337) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (5337) GAS_MONITOR: MQ7 raw=621.0mV filtered=688.7mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (5337) GAS_MONITOR: MQ8 raw=562.0mV filtered=602.2mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (5337) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (5347) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (6347) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (6347) GAS_MONITOR: MQ7 raw=731.0mV filtered=697.2mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (6347) GAS_MONITOR: MQ8 raw=637.0mV filtered=609.2mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (6347) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (6357) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (7357) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (7357) GAS_MONITOR: MQ7 raw=600.0mV filtered=677.7mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (7357) GAS_MONITOR: MQ8 raw=550.0mV filtered=597.3mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (7357) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (7367) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (8367) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (8367) GAS_MONITOR: MQ7 raw=753.0mV filtered=692.8mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (8367) GAS_MONITOR: MQ8 raw=644.0mV filtered=606.7mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (8367) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (8377) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (9377) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (9377) GAS_MONITOR: MQ7 raw=680.0mV filtered=690.2mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (9377) GAS_MONITOR: MQ8 raw=601.0mV filtered=605.5mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (9377) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (9387) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (10387) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (10387) GAS_MONITOR: MQ7 raw=649.0mV filtered=682.0mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (10387) GAS_MONITOR: MQ8 raw=577.0mV filtered=599.8mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (10387) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (10397) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (11397) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (11397) GAS_MONITOR: MQ7 raw=740.0mV filtered=693.6mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (11397) GAS_MONITOR: MQ8 raw=634.0mV filtered=606.7mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (11397) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (11407) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (12407) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (12407) GAS_MONITOR: MQ7 raw=612.0mV filtered=677.3mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (12407) GAS_MONITOR: MQ8 raw=561.0mV filtered=597.5mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (12407) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (12417) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (13417) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (13417) GAS_MONITOR: MQ7 raw=718.0mV filtered=685.4mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (13417) GAS_MONITOR: MQ8 raw=627.0mV filtered=603.4mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (13417) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (13427) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (14427) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (14427) GAS_MONITOR: MQ7 raw=703.0mV filtered=688.9mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (14427) GAS_MONITOR: MQ8 raw=621.0mV filtered=606.9mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (14427) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (14437) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (15437) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (15437) GAS_MONITOR: MQ7 raw=635.0mV filtered=678.1mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (15437) GAS_MONITOR: MQ8 raw=573.0mV filtered=600.2mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (15437) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (15447) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (16447) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (16447) GAS_MONITOR: MQ7 raw=754.0mV filtered=693.3mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (16447) GAS_MONITOR: MQ8 raw=648.0mV filtered=609.7mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (16447) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (16457) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (17457) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (17457) GAS_MONITOR: MQ7 raw=613.0mV filtered=677.3mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (17457) GAS_MONITOR: MQ8 raw=564.0mV filtered=600.6mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (17457) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (17467) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (18467) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (18467) GAS_MONITOR: MQ7 raw=709.0mV filtered=683.6mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (18467) GAS_MONITOR: MQ8 raw=614.0mV filtered=603.3mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (18467) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (18477) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (19477) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (19477) GAS_MONITOR: MQ7 raw=703.0mV filtered=687.5mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (19477) GAS_MONITOR: MQ8 raw=624.0mV filtered=607.4mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (19477) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (19487) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (20487) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (20487) GAS_MONITOR: MQ7 raw=627.0mV filtered=675.4mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (20487) GAS_MONITOR: MQ8 raw=573.0mV filtered=600.5mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (20487) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (20497) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (21497) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (21497) GAS_MONITOR: MQ7 raw=764.0mV filtered=693.1mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (21497) GAS_MONITOR: MQ8 raw=646.0mV filtered=609.6mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (21497) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (21507) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (22507) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (22507) GAS_MONITOR: MQ7 raw=623.0mV filtered=679.1mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (22507) GAS_MONITOR: MQ8 raw=562.0mV filtered=600.1mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (22507) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (22517) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (23517) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (23517) GAS_MONITOR: MQ7 raw=716.0mV filtered=686.5mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (23517) GAS_MONITOR: MQ8 raw=614.0mV filtered=602.9mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (23517) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (23527) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (24527) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (24527) GAS_MONITOR: MQ7 raw=740.0mV filtered=697.2mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (24527) GAS_MONITOR: MQ8 raw=633.0mV filtered=608.9mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (24527) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (24537) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (25537) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (25537) GAS_MONITOR: MQ7 raw=684.0mV filtered=694.5mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (25537) GAS_MONITOR: MQ8 raw=608.0mV filtered=608.7mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (25537) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (25547) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (26547) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (26547) GAS_MONITOR: MQ7 raw=632.0mV filtered=682.0mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (26547) GAS_MONITOR: MQ8 raw=563.0mV filtered=599.6mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (26547) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (26557) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (27557) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (27557) GAS_MONITOR: MQ7 raw=778.0mV filtered=701.2mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (27557) GAS_MONITOR: MQ8 raw=655.0mV filtered=610.7mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (27557) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (27567) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (28567) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (28567) GAS_MONITOR: MQ7 raw=611.0mV filtered=683.2mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (28567) GAS_MONITOR: MQ8 raw=560.0mV filtered=600.5mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (28567) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (28577) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (29577) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (29577) GAS_MONITOR: MQ7 raw=718.0mV filtered=690.1mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (29577) GAS_MONITOR: MQ8 raw=624.0mV filtered=605.2mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (29577) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (29587) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (30587) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (30587) GAS_MONITOR: MQ7 raw=704.0mV filtered=692.9mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (30587) GAS_MONITOR: MQ8 raw=624.0mV filtered=609.0mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (30587) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (30597) GAS_MONITOR: RISK source=baseline_warmup[0m
+[0;33mW (31597) GAS_MONITOR: SGP40 read failed[0m
+[0;32mI (31597) GAS_MONITOR: MQ7 raw=613.0mV filtered=676.9mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (31597) GAS_MONITOR: MQ8 raw=561.0mV filtered=599.4mV baseline=0.0mV state=WARMUP[0m
+[0;32mI (31597) GAS_MONITOR: SGP40 raw=0.0raw filtered=0.0raw baseline=0.0raw state=WARMUP[0m
+[0;32mI (31607) GAS_MONITOR: RISK source=baseline_warmup[0m
