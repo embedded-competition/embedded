@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "driver/adc.h"
 #include "driver/gpio.h"
 #include "driver/i2c.h"
 #include "esp_adc/adc_cali.h"
@@ -18,7 +17,6 @@
 
 /* ESP32-C3 SuperMini pin assignments. Change these to match your board. */
 #define MQ7_ADC_CHANNEL              ADC_CHANNEL_0 /* GPIO0 */
-#define MQ8_ADC_CHANNEL              ADC_CHANNEL_1 /* GPIO1 */
 #define I2C_SDA_GPIO                 GPIO_NUM_8
 #define I2C_SCL_GPIO                 GPIO_NUM_9
 #define I2C_PORT                     I2C_NUM_0
@@ -32,8 +30,7 @@
 #define ADC_SATURATION_MARGIN        5
 
 #define MQ7_RAW_DANGER_RATIO         1.50f
-#define MQ8_RAW_DANGER_RATIO         1.50f
-#define SGP40_RAW_DANGER_RATIO       1.30f
+#define SGP40_RAW_DROP_DANGER_RATIO  0.80f
 #define DANGER_HOLD_SAMPLES          3
 
 /*
@@ -49,7 +46,6 @@
 #define MQ_SENSOR_VCC_MV             5000.0f
 #define MQ_ADC_FULL_SCALE_MV         3300.0f
 #define MQ7_RL_KOHM                  10.0f
-#define MQ8_RL_KOHM                  10.0f
 
 /*
  * R0 calibration targets and clean-air factors.
@@ -58,7 +54,6 @@
  * and environment.
  */
 #define MQ7_CLEAN_AIR_FACTOR         27.5f
-#define MQ8_CLEAN_AIR_FACTOR         70.0f
 #define MQ_R0_EMA_ALPHA              0.05f
 
 /*
@@ -69,8 +64,6 @@
  */
 #define MQ7_PPM_CURVE_A              99.042f
 #define MQ7_PPM_CURVE_B              -1.518f
-#define MQ8_PPM_CURVE_A              976.97f
-#define MQ8_PPM_CURVE_B              -0.688f
 
 #define TAG "GAS_MONITOR"
 
@@ -253,7 +246,6 @@ static void adc_init_all(void)
         .bitwidth = ADC_BITWIDTH_DEFAULT,
     };
     ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc_handle, MQ7_ADC_CHANNEL, &channel_config));
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc_handle, MQ8_ADC_CHANNEL, &channel_config));
 
     s_adc_cali_enabled = adc_calibration_init(ADC_UNIT_1, ADC_ATTEN_DB_12, &s_adc_cali_handle);
     ESP_LOGI(TAG, "ADC calibration: %s", s_adc_cali_enabled ? "enabled" : "not available");
@@ -428,10 +420,6 @@ void app_main(void)
         .spike_abs_threshold = 250.0f,
         .spike_ratio_threshold = 0.35f,
     };
-    baseline_tracker_t mq8 = {
-        .spike_abs_threshold = 250.0f,
-        .spike_ratio_threshold = 0.35f,
-    };
     baseline_tracker_t sgp40 = {
         .spike_abs_threshold = 1500.0f,
         .spike_ratio_threshold = 0.20f,
@@ -443,77 +431,53 @@ void app_main(void)
         .curve_a = MQ7_PPM_CURVE_A,
         .curve_b = MQ7_PPM_CURVE_B,
     };
-    mq_calibration_t mq8_calibration = {
-        .rl_kohm = MQ8_RL_KOHM,
-        .clean_air_factor = MQ8_CLEAN_AIR_FACTOR,
-        .curve_a = MQ8_PPM_CURVE_A,
-        .curve_b = MQ8_PPM_CURVE_B,
-    };
 
     ESP_LOGI(TAG, "Start: baseline window=%d minutes, update interval=1 minute", BASELINE_BUCKET_COUNT);
-    ESP_LOGI(TAG, "MQ setup: MQ7_RL=%.1fk MQ8_RL=%.1fk; baseline uses ADC raw counts",
-             MQ7_RL_KOHM, MQ8_RL_KOHM);
+    ESP_LOGI(TAG, "MQ setup: MQ7_RL=%.1fk; baseline uses ADC raw counts", MQ7_RL_KOHM);
 
     uint8_t mq7_danger_count = 0;
-    uint8_t mq8_danger_count = 0;
     uint8_t sgp40_danger_count = 0;
 
     while (true) {
         int mq7_raw = 0;
-        int mq8_raw = 0;
         uint16_t sgp40_raw = 0;
 
         if (adc_read_raw(MQ7_ADC_CHANNEL, &mq7_raw) != ESP_OK) {
             ESP_LOGW(TAG, "MQ7 read failed");
-        }
-        if (adc_read_raw(MQ8_ADC_CHANNEL, &mq8_raw) != ESP_OK) {
-            ESP_LOGW(TAG, "MQ8 read failed");
         }
         if (sgp40_read_raw(&sgp40_raw) != ESP_OK) {
             ESP_LOGW(TAG, "SGP40 read failed");
         }
 
         tracker_result_t mq7_result = tracker_add_sample(&mq7, (float)mq7_raw);
-        tracker_result_t mq8_result = tracker_add_sample(&mq8, (float)mq8_raw);
         tracker_result_t sgp40_result = tracker_add_sample(&sgp40, (float)sgp40_raw);
 
         mq_gas_result_t mq7_gas = mq_calculate(mq7_result.filtered, &mq7_calibration,
                                                mq7_result.accepted, mq7.ready);
-        mq_gas_result_t mq8_gas = mq_calculate(mq8_result.filtered, &mq8_calibration,
-                                               mq8_result.accepted, mq8.ready);
 
         bool mq7_adc_saturated = adc_raw_is_saturated(mq7_raw);
-        bool mq8_adc_saturated = adc_raw_is_saturated(mq8_raw);
 
         print_mq_line("MQ7", &mq7_result, &mq7, &mq7_gas, mq7_adc_saturated);
-        print_mq_line("MQ8", &mq8_result, &mq8, &mq8_gas, mq8_adc_saturated);
         print_sensor_line("SGP40", &sgp40_result, &sgp40, "raw");
 
         bool mq7_signal_high = mq7.ready && !mq7_adc_saturated
                              && (float)mq7_raw > mq7.baseline * MQ7_RAW_DANGER_RATIO;
-        bool mq8_signal_high = mq8.ready && !mq8_adc_saturated
-                             && (float)mq8_raw > mq8.baseline * MQ8_RAW_DANGER_RATIO;
-        bool sgp40_signal_high = sgp40.ready
-                               && (float)sgp40_raw > sgp40.baseline * SGP40_RAW_DANGER_RATIO;
+        bool sgp40_signal_low = sgp40.ready
+                              && (float)sgp40_raw < sgp40.baseline * SGP40_RAW_DROP_DANGER_RATIO;
 
         mq7_danger_count = mq7_signal_high ? mq7_danger_count + 1 : 0;
-        mq8_danger_count = mq8_signal_high ? mq8_danger_count + 1 : 0;
-        sgp40_danger_count = sgp40_signal_high ? sgp40_danger_count + 1 : 0;
+        sgp40_danger_count = sgp40_signal_low ? sgp40_danger_count + 1 : 0;
 
         bool mq7_danger = mq7_danger_count >= DANGER_HOLD_SAMPLES;
-        bool mq8_danger = mq8_danger_count >= DANGER_HOLD_SAMPLES;
         bool sgp40_danger = sgp40_danger_count >= DANGER_HOLD_SAMPLES;
 
-        if (mq7_danger || mq8_danger || sgp40_danger) {
-            ESP_LOGW(TAG, "DANGER source=%s%s%s",
+        if (mq7_danger || sgp40_danger) {
+            ESP_LOGW(TAG, "DANGER source=%s%s",
                      mq7_danger ? "MQ7 " : "",
-                     mq8_danger ? "MQ8 " : "",
                      sgp40_danger ? "SGP40" : "");
-        } else if (mq7_adc_saturated || mq8_adc_saturated) {
-            ESP_LOGW(TAG, "RISK source=%s%s",
-                     mq7_adc_saturated ? "MQ7_ADC_SATURATED " : "",
-                     mq8_adc_saturated ? "MQ8_ADC_SATURATED" : "");
-        } else if (mq7.ready && mq8.ready && sgp40.ready) {
+        } else if (mq7_adc_saturated) {
+            ESP_LOGW(TAG, "RISK source=MQ7_ADC_SATURATED");
+        } else if (mq7.ready && sgp40.ready) {
             ESP_LOGI(TAG, "RISK source=none");
         } else {
             ESP_LOGI(TAG, "RISK source=baseline_warmup");
@@ -523,14 +487,12 @@ void app_main(void)
         ++sample_number;
         if (sample_number % SAMPLES_PER_MINUTE == 0) {
             tracker_finish_minute(&mq7);
-            tracker_finish_minute(&mq8);
             tracker_finish_minute(&sgp40);
             ESP_LOGI(TAG,
-                     "BASELINE UPDATED MQ7=%.1f raw R0=%.2fk MQ8=%.1f raw R0=%.2fk SGP40=%.1f raw ready=%s",
+                     "BASELINE UPDATED MQ7=%.1f raw R0=%.2fk SGP40=%.1f raw ready=%s",
                      mq7.baseline, mq7_calibration.r0_kohm,
-                     mq8.baseline, mq8_calibration.r0_kohm,
                      sgp40.baseline,
-                     (mq7.ready && mq8.ready && sgp40.ready) ? "yes" : "no");
+                     (mq7.ready && sgp40.ready) ? "yes" : "no");
         }
 
         vTaskDelayUntil(&next_sample, pdMS_TO_TICKS(SAMPLE_PERIOD_MS));
