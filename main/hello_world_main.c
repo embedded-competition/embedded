@@ -18,6 +18,8 @@
 /* ESP32-C3 SuperMini pin assignments. Change these to match your board. */
 #define MQ7_ADC_CHANNEL              ADC_CHANNEL_0 /* GPIO0 */
 #define MQ8_ADC_CHANNEL              ADC_CHANNEL_1 /* GPIO1 */
+#define FSR402_ADC_CHANNEL           ADC_CHANNEL_2 /* GPIO2 */
+#define WATER_LEVEL_ADC_CHANNEL     ADC_CHANNEL_3 /* GPIO3 */
 #define I2C_SDA_GPIO                 GPIO_NUM_8
 #define I2C_SCL_GPIO                 GPIO_NUM_9
 #define I2C_PORT                     I2C_NUM_0
@@ -253,6 +255,8 @@ static void adc_init_all(void)
     };
     ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc_handle, MQ7_ADC_CHANNEL, &channel_config));
     ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc_handle, MQ8_ADC_CHANNEL, &channel_config));
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc_handle, FSR402_ADC_CHANNEL, &channel_config));
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc_handle, WATER_LEVEL_ADC_CHANNEL, &channel_config));
 
     s_adc_cali_enabled = adc_calibration_init(ADC_UNIT_1, ADC_ATTEN_DB_12, &s_adc_cali_handle);
     ESP_LOGI(TAG, "ADC calibration: %s", s_adc_cali_enabled ? "enabled" : "not available");
@@ -417,6 +421,20 @@ static void print_sensor_line(const char *name, const tracker_result_t *value,
              tracker->ready ? (value->accepted ? "OK" : "SPIKE_IGNORED") : "WARMUP");
 }
 
+static void print_analog_line(const char *name, const tracker_result_t *value,
+                              const baseline_tracker_t *tracker)
+{
+    int millivolts = 0;
+    if (adc_raw_to_mv((int)value->filtered, &millivolts) != ESP_OK) {
+        ESP_LOGW(TAG, "%s raw=%.1f mV=invalid", name, value->raw);
+        return;
+    }
+
+    ESP_LOGI(TAG, "%s raw=%.1f filtered=%.1f baseline=%.1f mV=%d state=%s",
+             name, value->raw, value->filtered, tracker->baseline, millivolts,
+             tracker->ready ? (value->accepted ? "OK" : "SPIKE_IGNORED") : "WARMUP");
+}
+
 void app_main(void)
 {
     adc_init_all();
@@ -435,6 +453,14 @@ void app_main(void)
         .spike_abs_threshold = 1500.0f,
         .spike_ratio_threshold = 0.20f,
     };
+    baseline_tracker_t fsr402 = {
+        .spike_abs_threshold = 150.0f,
+        .spike_ratio_threshold = 0.50f,
+    };
+    baseline_tracker_t water_level = {
+        .spike_abs_threshold = 150.0f,
+        .spike_ratio_threshold = 0.50f,
+    };
 
     mq_calibration_t mq7_calibration = {
         .rl_kohm = MQ7_RL_KOHM,
@@ -450,6 +476,7 @@ void app_main(void)
     };
 
     ESP_LOGI(TAG, "Start: baseline window=%d minutes, update interval=1 minute", BASELINE_BUCKET_COUNT);
+    ESP_LOGI(TAG, "Pins: MQ7=GPIO0 MQ8=GPIO1 FSR402=GPIO2 WATER_LEVEL=GPIO3 SGP40 SDA=GPIO8 SCL=GPIO9");
     ESP_LOGI(TAG, "MQ setup: MQ7_RL=%.1fk MQ8_RL=%.1fk; baseline uses ADC raw counts",
              MQ7_RL_KOHM, MQ8_RL_KOHM);
 
@@ -460,6 +487,8 @@ void app_main(void)
     while (true) {
         int mq7_raw = 0;
         int mq8_raw = 0;
+        int fsr402_raw = 0;
+        int water_level_raw = 0;
         uint16_t sgp40_raw = 0;
 
         if (adc_read_raw(MQ7_ADC_CHANNEL, &mq7_raw) != ESP_OK) {
@@ -468,6 +497,12 @@ void app_main(void)
         if (adc_read_raw(MQ8_ADC_CHANNEL, &mq8_raw) != ESP_OK) {
             ESP_LOGW(TAG, "MQ8 read failed");
         }
+        if (adc_read_raw(FSR402_ADC_CHANNEL, &fsr402_raw) != ESP_OK) {
+            ESP_LOGW(TAG, "FSR402 read failed");
+        }
+        if (adc_read_raw(WATER_LEVEL_ADC_CHANNEL, &water_level_raw) != ESP_OK) {
+            ESP_LOGW(TAG, "water level read failed");
+        }
         if (sgp40_read_raw(&sgp40_raw) != ESP_OK) {
             ESP_LOGW(TAG, "SGP40 read failed");
         }
@@ -475,6 +510,8 @@ void app_main(void)
         tracker_result_t mq7_result = tracker_add_sample(&mq7, (float)mq7_raw);
         tracker_result_t mq8_result = tracker_add_sample(&mq8, (float)mq8_raw);
         tracker_result_t sgp40_result = tracker_add_sample(&sgp40, (float)sgp40_raw);
+        tracker_result_t fsr402_result = tracker_add_sample(&fsr402, (float)fsr402_raw);
+        tracker_result_t water_level_result = tracker_add_sample(&water_level, (float)water_level_raw);
 
         mq_gas_result_t mq7_gas = mq_calculate(mq7_result.filtered, &mq7_calibration,
                                                mq7_result.accepted, mq7.ready);
@@ -487,6 +524,8 @@ void app_main(void)
         print_mq_line("MQ7", &mq7_result, &mq7, &mq7_gas, mq7_adc_saturated);
         print_mq_line("MQ8", &mq8_result, &mq8, &mq8_gas, mq8_adc_saturated);
         print_sensor_line("SGP40", &sgp40_result, &sgp40, "raw");
+        print_analog_line("FSR402", &fsr402_result, &fsr402);
+        print_analog_line("WATER_LEVEL", &water_level_result, &water_level);
 
         bool mq7_signal_high = mq7.ready && !mq7_adc_saturated
                              && (float)mq7_raw > mq7.baseline * MQ7_RAW_DANGER_RATIO;
@@ -524,6 +563,8 @@ void app_main(void)
             tracker_finish_minute(&mq7);
             tracker_finish_minute(&mq8);
             tracker_finish_minute(&sgp40);
+            tracker_finish_minute(&fsr402);
+            tracker_finish_minute(&water_level);
             ESP_LOGI(TAG,
                      "BASELINE UPDATED MQ7=%.1f raw R0=%.2fk MQ8=%.1f raw R0=%.2fk SGP40=%.1f raw ready=%s",
                      mq7.baseline, mq7_calibration.r0_kohm,
