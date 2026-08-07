@@ -6,6 +6,7 @@
 
 #include "driver/gpio.h"
 #include "driver/i2c.h"
+#include "driver/uart.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_adc/adc_oneshot.h"
@@ -25,6 +26,18 @@
 #define I2C_PORT                     I2C_NUM_0
 #define SGP40_I2C_ADDRESS            0x59
 
+/* RYLR998 UART: ESP32-C3 TX -> module RX, ESP32-C3 RX -> module TX. */
+#define LORA_UART_PORT               UART_NUM_1
+#define LORA_UART_TX_GPIO            GPIO_NUM_4
+#define LORA_UART_RX_GPIO            GPIO_NUM_5
+#define LORA_UART_BAUD_RATE          115200
+#define LORA_UART_BUF_SIZE           512
+#define LORA_NODE_ADDRESS            1
+#define LORA_RECEIVER_ADDRESS        2
+#define LORA_NETWORK_ID              18
+#define LORA_BAND_HZ                 915000000
+#define LORA_PARAMETER                "9,7,1,12"
+
 #define SAMPLE_PERIOD_MS             1000
 #define SAMPLES_PER_MINUTE           60
 #define BASELINE_BUCKET_COUNT        3
@@ -34,6 +47,8 @@
 
 #define MQ7_RAW_DANGER_RATIO         1.50f
 #define MQ8_RAW_DANGER_RATIO         1.50f
+#define FSR402_RAW_DANGER_RATIO      1.50f
+#define WATER_LEVEL_RAW_DANGER_RATIO 1.50f
 #define SGP40_RAW_DROP_DANGER_RATIO  0.80f
 #define DANGER_HOLD_SAMPLES          3
 
@@ -117,6 +132,100 @@ typedef struct {
 static adc_oneshot_unit_handle_t s_adc_handle;
 static adc_cali_handle_t s_adc_cali_handle;
 static bool s_adc_cali_enabled;
+
+static void lora_uart_init(void)
+{
+    const uart_config_t config = {
+        .baud_rate = LORA_UART_BAUD_RATE,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_DEFAULT,
+    };
+
+    ESP_ERROR_CHECK(uart_driver_install(LORA_UART_PORT, LORA_UART_BUF_SIZE,
+                                        LORA_UART_BUF_SIZE, 0, NULL, 0));
+    ESP_ERROR_CHECK(uart_param_config(LORA_UART_PORT, &config));
+    ESP_ERROR_CHECK(uart_set_pin(LORA_UART_PORT, LORA_UART_TX_GPIO,
+                                 LORA_UART_RX_GPIO, UART_PIN_NO_CHANGE,
+                                 UART_PIN_NO_CHANGE));
+}
+
+static int lora_read_line(char *line, size_t line_size, TickType_t timeout)
+{
+    size_t length = 0;
+    TickType_t start = xTaskGetTickCount();
+
+    while ((xTaskGetTickCount() - start) < timeout && length < line_size - 1) {
+        uint8_t ch = 0;
+        if (uart_read_bytes(LORA_UART_PORT, &ch, 1, pdMS_TO_TICKS(50)) <= 0) {
+            continue;
+        }
+        if (ch == '\r') {
+            continue;
+        }
+        if (ch == '\n') {
+            if (length == 0) {
+                continue;
+            }
+            break;
+        }
+        line[length++] = (char)ch;
+    }
+
+    line[length] = '\0';
+    return (int)length;
+}
+
+static bool lora_send_command(const char *command, const char *expected_reply)
+{
+    char response[128];
+    uart_write_bytes(LORA_UART_PORT, command, strlen(command));
+    uart_write_bytes(LORA_UART_PORT, "\r\n", 2);
+
+    TickType_t start = xTaskGetTickCount();
+    while ((xTaskGetTickCount() - start) < pdMS_TO_TICKS(1500)) {
+        int length = lora_read_line(response, sizeof(response), pdMS_TO_TICKS(200));
+        if (length <= 0) {
+            continue;
+        }
+        if (strstr(response, expected_reply) != NULL) {
+            return true;
+        }
+        if (strstr(response, "+ERR") != NULL) {
+            return false;
+        }
+    }
+
+    ESP_LOGW(TAG, "LoRa command timeout: %s", command);
+    return false;
+}
+
+static void lora_init_module(void)
+{
+    char command[64];
+
+    uart_flush_input(LORA_UART_PORT);
+    lora_send_command("AT", "+OK");
+    snprintf(command, sizeof(command), "AT+ADDRESS=%d", LORA_NODE_ADDRESS);
+    lora_send_command(command, "+OK");
+    snprintf(command, sizeof(command), "AT+NETWORKID=%d", LORA_NETWORK_ID);
+    lora_send_command(command, "+OK");
+    snprintf(command, sizeof(command), "AT+BAND=%d", LORA_BAND_HZ);
+    lora_send_command(command, "+OK");
+    snprintf(command, sizeof(command), "AT+PARAMETER=%s", LORA_PARAMETER);
+    lora_send_command(command, "+OK");
+}
+
+static bool lora_send_sensor_data(const char *payload)
+{
+    char command[180];
+    int length = (int)strlen(payload);
+    snprintf(command, sizeof(command), "AT+SEND=%d,%d,%s",
+             LORA_RECEIVER_ADDRESS, length, payload);
+    return lora_send_command(command, "+OK");
+}
 
 static float sort_and_trimmed_mean(const float *input, size_t count)
 {
@@ -439,6 +548,8 @@ void app_main(void)
 {
     adc_init_all();
     i2c_init_all();
+    lora_uart_init();
+    lora_init_module();
     TickType_t next_sample = xTaskGetTickCount();
 
     baseline_tracker_t mq7 = {
@@ -482,6 +593,8 @@ void app_main(void)
 
     uint8_t mq7_danger_count = 0;
     uint8_t mq8_danger_count = 0;
+    uint8_t fsr402_danger_count = 0;
+    uint8_t water_level_danger_count = 0;
     uint8_t sgp40_danger_count = 0;
 
     while (true) {
@@ -531,27 +644,82 @@ void app_main(void)
                              && (float)mq7_raw > mq7.baseline * MQ7_RAW_DANGER_RATIO;
         bool mq8_signal_high = mq8.ready && !mq8_adc_saturated
                              && (float)mq8_raw > mq8.baseline * MQ8_RAW_DANGER_RATIO;
+        bool fsr402_signal_high = fsr402.ready
+                                && (float)fsr402_raw > fsr402.baseline * FSR402_RAW_DANGER_RATIO;
+        bool water_level_signal_high = water_level.ready
+                                     && (float)water_level_raw
+                                            > water_level.baseline * WATER_LEVEL_RAW_DANGER_RATIO;
         bool sgp40_signal_low = sgp40.ready
                               && (float)sgp40_raw < sgp40.baseline * SGP40_RAW_DROP_DANGER_RATIO;
 
         mq7_danger_count = mq7_signal_high ? mq7_danger_count + 1 : 0;
         mq8_danger_count = mq8_signal_high ? mq8_danger_count + 1 : 0;
+        fsr402_danger_count = fsr402_signal_high ? fsr402_danger_count + 1 : 0;
+        water_level_danger_count = water_level_signal_high ? water_level_danger_count + 1 : 0;
         sgp40_danger_count = sgp40_signal_low ? sgp40_danger_count + 1 : 0;
 
         bool mq7_danger = mq7_danger_count >= DANGER_HOLD_SAMPLES;
         bool mq8_danger = mq8_danger_count >= DANGER_HOLD_SAMPLES;
+        bool fsr402_danger = fsr402_danger_count >= DANGER_HOLD_SAMPLES;
+        bool water_level_danger = water_level_danger_count >= DANGER_HOLD_SAMPLES;
         bool sgp40_danger = sgp40_danger_count >= DANGER_HOLD_SAMPLES;
 
-        if (mq7_danger || mq8_danger || sgp40_danger) {
-            ESP_LOGW(TAG, "DANGER source=%s%s%s",
+        char alert[64] = "";
+        size_t alert_length = 0;
+        if (mq7_danger) {
+            alert_length += (size_t)snprintf(alert + alert_length, sizeof(alert) - alert_length,
+                                             "MQ7|");
+        }
+        if (mq8_danger) {
+            alert_length += (size_t)snprintf(alert + alert_length, sizeof(alert) - alert_length,
+                                             "MQ8|");
+        }
+        if (mq7_adc_saturated) {
+            alert_length += (size_t)snprintf(alert + alert_length, sizeof(alert) - alert_length,
+                                             "MQ7_SATURATED|");
+        }
+        if (mq8_adc_saturated) {
+            alert_length += (size_t)snprintf(alert + alert_length, sizeof(alert) - alert_length,
+                                             "MQ8_SATURATED|");
+        }
+        if (fsr402_danger) {
+            alert_length += (size_t)snprintf(alert + alert_length, sizeof(alert) - alert_length,
+                                             "FSR402|");
+        }
+        if (water_level_danger) {
+            alert_length += (size_t)snprintf(alert + alert_length, sizeof(alert) - alert_length,
+                                             "WATER_LEVEL|");
+        }
+        if (sgp40_danger) {
+            alert_length += (size_t)snprintf(alert + alert_length, sizeof(alert) - alert_length,
+                                             "SGP40|");
+        }
+        if (alert_length == 0) {
+            snprintf(alert, sizeof(alert), "NONE");
+        } else {
+            alert[alert_length - 1] = '\0';
+        }
+
+        char payload[128];
+        snprintf(payload, sizeof(payload),
+                 "MQ7=%d,MQ8=%d,SGP=%u,FSR=%d,WATER=%d,ALERT=%s",
+                 mq7_raw, mq8_raw, sgp40_raw, fsr402_raw, water_level_raw, alert);
+        if (lora_send_sensor_data(payload)) {
+            ESP_LOGI(TAG, "LoRa sent: %s", payload);
+        }
+
+        if (mq7_danger || mq8_danger || fsr402_danger || water_level_danger || sgp40_danger) {
+            ESP_LOGW(TAG, "DANGER source=%s%s%s%s%s",
                      mq7_danger ? "MQ7 " : "",
                      mq8_danger ? "MQ8 " : "",
+                     fsr402_danger ? "FSR402 " : "",
+                     water_level_danger ? "WATER_LEVEL " : "",
                      sgp40_danger ? "SGP40" : "");
         } else if (mq7_adc_saturated || mq8_adc_saturated) {
             ESP_LOGW(TAG, "RISK source=%s%s",
                      mq7_adc_saturated ? "MQ7_ADC_SATURATED " : "",
                      mq8_adc_saturated ? "MQ8_ADC_SATURATED" : "");
-        } else if (mq7.ready && mq8.ready && sgp40.ready) {
+        } else if (mq7.ready && mq8.ready && fsr402.ready && water_level.ready && sgp40.ready) {
             ESP_LOGI(TAG, "RISK source=none");
         } else {
             ESP_LOGI(TAG, "RISK source=baseline_warmup");
