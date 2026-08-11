@@ -133,6 +133,10 @@ static adc_oneshot_unit_handle_t s_adc_handle;
 static adc_cali_handle_t s_adc_cali_handle;
 static bool s_adc_cali_enabled;
 
+/* Extra lines (read-failure warnings, baseline updates) printed since the last
+ * status block redraw, so the block knows how far to move the cursor back up. */
+static uint32_t s_status_extra_lines;
+
 static void lora_uart_init(void)
 {
     const uart_config_t config = {
@@ -500,16 +504,68 @@ static void i2c_init_all(void)
     ESP_ERROR_CHECK(i2c_driver_install(I2C_PORT, config.mode, 0, 0, 0));
 }
 
-static void print_status_line(int mq7_raw, int mq8_raw, int fsr402_raw, int water_level_raw,
-                              uint16_t sgp40_raw, const mq_gas_result_t *mq7_gas,
-                              const mq_gas_result_t *mq8_gas, const char *state,
-                              const char *alert, bool lora_ok)
+#define STATUS_BLOCK_LINE_COUNT 6
+
+static void print_status_row(const char *name, const tracker_result_t *value,
+                             const baseline_tracker_t *tracker, const char *state,
+                             const char *extra)
 {
-    printf("\r\033[K"
-           "MQ7=%d(%.0fppm) MQ8=%d(%.0fppm) FSR=%d WATER=%d SGP=%u | STATE=%-6s ALERT=%-24s LORA=%s",
-           mq7_raw, mq7_gas->valid ? mq7_gas->ppm : 0.0f,
-           mq8_raw, mq8_gas->valid ? mq8_gas->ppm : 0.0f,
-           fsr402_raw, water_level_raw, sgp40_raw, state, alert, lora_ok ? "OK" : "FAIL");
+    printf("\r\033[K%-12s raw=%8.0f filtered=%10.1f baseline=%10.1f state=%-15s%s\n",
+           name, value->raw, value->filtered, tracker->baseline, state, extra);
+}
+
+static void print_status_block(const tracker_result_t *mq7_result, const baseline_tracker_t *mq7,
+                               const mq_gas_result_t *mq7_gas, bool mq7_adc_saturated,
+                               const tracker_result_t *mq8_result, const baseline_tracker_t *mq8,
+                               const mq_gas_result_t *mq8_gas, bool mq8_adc_saturated,
+                               const tracker_result_t *sgp40_result, const baseline_tracker_t *sgp40,
+                               const tracker_result_t *fsr402_result, const baseline_tracker_t *fsr402,
+                               const tracker_result_t *water_level_result,
+                               const baseline_tracker_t *water_level,
+                               const char *overall_state, const char *alert, bool lora_ok)
+{
+    static bool first_draw = true;
+    if (!first_draw) {
+        printf("\033[%uA", (unsigned)(STATUS_BLOCK_LINE_COUNT + s_status_extra_lines));
+    }
+    first_draw = false;
+    s_status_extra_lines = 0;
+
+    char extra[24];
+
+    const char *mq7_state = mq7_adc_saturated ? "ADC_SATURATED" :
+                            (mq7->ready ? (mq7_result->accepted ? "OK" : "SPIKE_IGNORED")
+                                        : "R0_CALIBRATING");
+    if (mq7_gas->valid) {
+        snprintf(extra, sizeof(extra), " ppm=%10.1f", mq7_gas->ppm);
+    } else {
+        snprintf(extra, sizeof(extra), " ppm=%10s", "n/a");
+    }
+    print_status_row("MQ7", mq7_result, mq7, mq7_state, extra);
+
+    const char *mq8_state = mq8_adc_saturated ? "ADC_SATURATED" :
+                            (mq8->ready ? (mq8_result->accepted ? "OK" : "SPIKE_IGNORED")
+                                        : "R0_CALIBRATING");
+    if (mq8_gas->valid) {
+        snprintf(extra, sizeof(extra), " ppm=%10.1f", mq8_gas->ppm);
+    } else {
+        snprintf(extra, sizeof(extra), " ppm=%10s", "n/a");
+    }
+    print_status_row("MQ8", mq8_result, mq8, mq8_state, extra);
+
+    const char *sgp40_state = sgp40->ready ? (sgp40_result->accepted ? "OK" : "SPIKE_IGNORED") : "WARMUP";
+    print_status_row("SGP40", sgp40_result, sgp40, sgp40_state, "");
+
+    const char *fsr402_state = fsr402->ready ? (fsr402_result->accepted ? "OK" : "SPIKE_IGNORED") : "WARMUP";
+    print_status_row("FSR402", fsr402_result, fsr402, fsr402_state, "");
+
+    const char *water_level_state = water_level->ready
+                                   ? (water_level_result->accepted ? "OK" : "SPIKE_IGNORED")
+                                   : "WARMUP";
+    print_status_row("WATER_LEVEL", water_level_result, water_level, water_level_state, "");
+
+    printf("\r\033[K""STATE=%-8s ALERT=%-28s LORA=%s\n", overall_state, alert, lora_ok ? "OK" : "FAIL");
+
     fflush(stdout);
 }
 
@@ -574,26 +630,31 @@ void app_main(void)
         uint16_t sgp40_raw = 0;
 
         if (adc_read_raw(MQ7_ADC_CHANNEL, &mq7_raw) != ESP_OK) {
-            ESP_LOGW(TAG, "\nMQ7 read failed");
+            ESP_LOGW(TAG, "MQ7 read failed");
+            ++s_status_extra_lines;
         }
         if (adc_read_raw(MQ8_ADC_CHANNEL, &mq8_raw) != ESP_OK) {
-            ESP_LOGW(TAG, "\nMQ8 read failed");
+            ESP_LOGW(TAG, "MQ8 read failed");
+            ++s_status_extra_lines;
         }
         if (adc_read_raw(FSR402_ADC_CHANNEL, &fsr402_raw) != ESP_OK) {
-            ESP_LOGW(TAG, "\nFSR402 read failed");
+            ESP_LOGW(TAG, "FSR402 read failed");
+            ++s_status_extra_lines;
         }
         if (adc_read_raw(WATER_LEVEL_ADC_CHANNEL, &water_level_raw) != ESP_OK) {
-            ESP_LOGW(TAG, "\nwater level read failed");
+            ESP_LOGW(TAG, "water level read failed");
+            ++s_status_extra_lines;
         }
         if (sgp40_read_raw(&sgp40_raw) != ESP_OK) {
-            ESP_LOGW(TAG, "\nSGP40 read failed");
+            ESP_LOGW(TAG, "SGP40 read failed");
+            ++s_status_extra_lines;
         }
 
         tracker_result_t mq7_result = tracker_add_sample(&mq7, (float)mq7_raw);
         tracker_result_t mq8_result = tracker_add_sample(&mq8, (float)mq8_raw);
-        tracker_add_sample(&sgp40, (float)sgp40_raw);
-        tracker_add_sample(&fsr402, (float)fsr402_raw);
-        tracker_add_sample(&water_level, (float)water_level_raw);
+        tracker_result_t sgp40_result = tracker_add_sample(&sgp40, (float)sgp40_raw);
+        tracker_result_t fsr402_result = tracker_add_sample(&fsr402, (float)fsr402_raw);
+        tracker_result_t water_level_result = tracker_add_sample(&water_level, (float)water_level_raw);
 
         mq_gas_result_t mq7_gas = mq_calculate(mq7_result.filtered, &mq7_calibration,
                                                mq7_result.accepted, mq7.ready);
@@ -680,8 +741,12 @@ void app_main(void)
             state = "WARMUP";
         }
 
-        print_status_line(mq7_raw, mq8_raw, fsr402_raw, water_level_raw, sgp40_raw,
-                          &mq7_gas, &mq8_gas, state, alert, lora_ok);
+        print_status_block(&mq7_result, &mq7, &mq7_gas, mq7_adc_saturated,
+                           &mq8_result, &mq8, &mq8_gas, mq8_adc_saturated,
+                           &sgp40_result, &sgp40,
+                           &fsr402_result, &fsr402,
+                           &water_level_result, &water_level,
+                           state, alert, lora_ok);
 
         static uint32_t sample_number = 0;
         ++sample_number;
@@ -692,11 +757,12 @@ void app_main(void)
             tracker_finish_minute(&fsr402);
             tracker_finish_minute(&water_level);
             ESP_LOGI(TAG,
-                     "\nBASELINE UPDATED MQ7=%.1f raw R0=%.2fk MQ8=%.1f raw R0=%.2fk SGP40=%.1f raw ready=%s",
+                     "BASELINE UPDATED MQ7=%.1f raw R0=%.2fk MQ8=%.1f raw R0=%.2fk SGP40=%.1f raw ready=%s",
                      mq7.baseline, mq7_calibration.r0_kohm,
                      mq8.baseline, mq8_calibration.r0_kohm,
                      sgp40.baseline,
                      (mq7.ready && mq8.ready && sgp40.ready) ? "yes" : "no");
+            ++s_status_extra_lines;
         }
 
         vTaskDelayUntil(&next_sample, pdMS_TO_TICKS(SAMPLE_PERIOD_MS));
