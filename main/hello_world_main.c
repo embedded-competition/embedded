@@ -12,7 +12,9 @@
 #include "esp_adc/adc_oneshot.h"
 #include "esp_err.h"
 #include "esp_check.h"
+#include "esp_mac.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -571,6 +573,14 @@ static void print_status_block(const tracker_result_t *mq7_result, const baselin
 
 void app_main(void)
 {
+    uint8_t device_mac[6] = {0};
+    char mac_text[18];
+
+    ESP_ERROR_CHECK(esp_read_mac(device_mac, ESP_MAC_WIFI_STA));
+    snprintf(mac_text, sizeof(mac_text), "%02X:%02X:%02X:%02X:%02X:%02X",
+             device_mac[0], device_mac[1], device_mac[2],
+             device_mac[3], device_mac[4], device_mac[5]);
+
     adc_init_all();
     i2c_init_all();
     lora_uart_init();
@@ -726,8 +736,9 @@ void app_main(void)
 
         char payload[128];
         snprintf(payload, sizeof(payload),
-                 "MQ7=%d,MQ8=%d,SGP=%u,FSR=%d,WATER=%d,ALERT=%s",
-                 mq7_raw, mq8_raw, sgp40_raw, fsr402_raw, water_level_raw, alert);
+                 "MAC=%s,MQ7=%d,MQ8=%d,SGP=%u,FSR=%d,WATER=%d,ALERT=%s",
+                 mac_text, mq7_raw, mq8_raw, sgp40_raw,
+                 fsr402_raw, water_level_raw, alert);
         bool lora_ok = lora_send_sensor_data(payload);
 
         const char *state;
