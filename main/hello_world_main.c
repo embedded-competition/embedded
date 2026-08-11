@@ -500,48 +500,17 @@ static void i2c_init_all(void)
     ESP_ERROR_CHECK(i2c_driver_install(I2C_PORT, config.mode, 0, 0, 0));
 }
 
-static void print_mq_line(const char *name, const tracker_result_t *value,
-                          const baseline_tracker_t *tracker,
-                          const mq_gas_result_t *gas,
-                          bool adc_saturated)
+static void print_status_line(int mq7_raw, int mq8_raw, int fsr402_raw, int water_level_raw,
+                              uint16_t sgp40_raw, const mq_gas_result_t *mq7_gas,
+                              const mq_gas_result_t *mq8_gas, const char *state,
+                              const char *alert, bool lora_ok)
 {
-    const char *state = adc_saturated ? "ADC_SATURATED" :
-                        (tracker->ready ? (value->accepted ? "OK" : "SPIKE_IGNORED")
-                                        : "R0_CALIBRATING");
-
-    if (gas->valid) {
-        ESP_LOGI(TAG,
-                 "%s raw=%.0f filtered=%.1f baseline=%.1f Rs=%.2fk R0=%.2fk ratio=%.3f ppm=%.1f state=%s",
-                 name, value->raw, value->filtered, tracker->baseline,
-                 gas->rs_kohm, gas->r0_kohm, gas->ratio, gas->ppm, state);
-    } else {
-        ESP_LOGW(TAG,
-                 "%s raw=%.0f filtered=%.1f baseline=%.1f ppm=invalid state=%s",
-                 name, value->raw, value->filtered, tracker->baseline, state);
-    }
-}
-
-static void print_sensor_line(const char *name, const tracker_result_t *value,
-                              const baseline_tracker_t *tracker, const char *unit)
-{
-    ESP_LOGI(TAG, "%s raw=%.1f%s filtered=%.1f%s baseline=%.1f%s state=%s",
-             name, value->raw, unit, value->filtered, unit,
-             tracker->baseline, unit,
-             tracker->ready ? (value->accepted ? "OK" : "SPIKE_IGNORED") : "WARMUP");
-}
-
-static void print_analog_line(const char *name, const tracker_result_t *value,
-                              const baseline_tracker_t *tracker)
-{
-    int millivolts = 0;
-    if (adc_raw_to_mv((int)value->filtered, &millivolts) != ESP_OK) {
-        ESP_LOGW(TAG, "%s raw=%.1f mV=invalid", name, value->raw);
-        return;
-    }
-
-    ESP_LOGI(TAG, "%s raw=%.1f filtered=%.1f baseline=%.1f mV=%d state=%s",
-             name, value->raw, value->filtered, tracker->baseline, millivolts,
-             tracker->ready ? (value->accepted ? "OK" : "SPIKE_IGNORED") : "WARMUP");
+    printf("\r\033[K"
+           "MQ7=%d(%.0fppm) MQ8=%d(%.0fppm) FSR=%d WATER=%d SGP=%u | STATE=%-6s ALERT=%-24s LORA=%s",
+           mq7_raw, mq7_gas->valid ? mq7_gas->ppm : 0.0f,
+           mq8_raw, mq8_gas->valid ? mq8_gas->ppm : 0.0f,
+           fsr402_raw, water_level_raw, sgp40_raw, state, alert, lora_ok ? "OK" : "FAIL");
+    fflush(stdout);
 }
 
 void app_main(void)
@@ -605,26 +574,26 @@ void app_main(void)
         uint16_t sgp40_raw = 0;
 
         if (adc_read_raw(MQ7_ADC_CHANNEL, &mq7_raw) != ESP_OK) {
-            ESP_LOGW(TAG, "MQ7 read failed");
+            ESP_LOGW(TAG, "\nMQ7 read failed");
         }
         if (adc_read_raw(MQ8_ADC_CHANNEL, &mq8_raw) != ESP_OK) {
-            ESP_LOGW(TAG, "MQ8 read failed");
+            ESP_LOGW(TAG, "\nMQ8 read failed");
         }
         if (adc_read_raw(FSR402_ADC_CHANNEL, &fsr402_raw) != ESP_OK) {
-            ESP_LOGW(TAG, "FSR402 read failed");
+            ESP_LOGW(TAG, "\nFSR402 read failed");
         }
         if (adc_read_raw(WATER_LEVEL_ADC_CHANNEL, &water_level_raw) != ESP_OK) {
-            ESP_LOGW(TAG, "water level read failed");
+            ESP_LOGW(TAG, "\nwater level read failed");
         }
         if (sgp40_read_raw(&sgp40_raw) != ESP_OK) {
-            ESP_LOGW(TAG, "SGP40 read failed");
+            ESP_LOGW(TAG, "\nSGP40 read failed");
         }
 
         tracker_result_t mq7_result = tracker_add_sample(&mq7, (float)mq7_raw);
         tracker_result_t mq8_result = tracker_add_sample(&mq8, (float)mq8_raw);
-        tracker_result_t sgp40_result = tracker_add_sample(&sgp40, (float)sgp40_raw);
-        tracker_result_t fsr402_result = tracker_add_sample(&fsr402, (float)fsr402_raw);
-        tracker_result_t water_level_result = tracker_add_sample(&water_level, (float)water_level_raw);
+        tracker_add_sample(&sgp40, (float)sgp40_raw);
+        tracker_add_sample(&fsr402, (float)fsr402_raw);
+        tracker_add_sample(&water_level, (float)water_level_raw);
 
         mq_gas_result_t mq7_gas = mq_calculate(mq7_result.filtered, &mq7_calibration,
                                                mq7_result.accepted, mq7.ready);
@@ -633,12 +602,6 @@ void app_main(void)
 
         bool mq7_adc_saturated = adc_raw_is_saturated(mq7_raw);
         bool mq8_adc_saturated = adc_raw_is_saturated(mq8_raw);
-
-        print_mq_line("MQ7", &mq7_result, &mq7, &mq7_gas, mq7_adc_saturated);
-        print_mq_line("MQ8", &mq8_result, &mq8, &mq8_gas, mq8_adc_saturated);
-        print_sensor_line("SGP40", &sgp40_result, &sgp40, "raw");
-        print_analog_line("FSR402", &fsr402_result, &fsr402);
-        print_analog_line("WATER_LEVEL", &water_level_result, &water_level);
 
         bool mq7_signal_high = mq7.ready && !mq7_adc_saturated
                              && (float)mq7_raw > mq7.baseline * MQ7_RAW_DANGER_RATIO;
@@ -704,26 +667,21 @@ void app_main(void)
         snprintf(payload, sizeof(payload),
                  "MQ7=%d,MQ8=%d,SGP=%u,FSR=%d,WATER=%d,ALERT=%s",
                  mq7_raw, mq8_raw, sgp40_raw, fsr402_raw, water_level_raw, alert);
-        if (lora_send_sensor_data(payload)) {
-            ESP_LOGI(TAG, "LoRa sent: %s", payload);
+        bool lora_ok = lora_send_sensor_data(payload);
+
+        const char *state;
+        if (mq7_danger || mq8_danger || fsr402_danger || water_level_danger || sgp40_danger) {
+            state = "DANGER";
+        } else if (mq7_adc_saturated || mq8_adc_saturated) {
+            state = "RISK";
+        } else if (mq7.ready && mq8.ready && fsr402.ready && water_level.ready && sgp40.ready) {
+            state = "OK";
+        } else {
+            state = "WARMUP";
         }
 
-        if (mq7_danger || mq8_danger || fsr402_danger || water_level_danger || sgp40_danger) {
-            ESP_LOGW(TAG, "DANGER source=%s%s%s%s%s",
-                     mq7_danger ? "MQ7 " : "",
-                     mq8_danger ? "MQ8 " : "",
-                     fsr402_danger ? "FSR402 " : "",
-                     water_level_danger ? "WATER_LEVEL " : "",
-                     sgp40_danger ? "SGP40" : "");
-        } else if (mq7_adc_saturated || mq8_adc_saturated) {
-            ESP_LOGW(TAG, "RISK source=%s%s",
-                     mq7_adc_saturated ? "MQ7_ADC_SATURATED " : "",
-                     mq8_adc_saturated ? "MQ8_ADC_SATURATED" : "");
-        } else if (mq7.ready && mq8.ready && fsr402.ready && water_level.ready && sgp40.ready) {
-            ESP_LOGI(TAG, "RISK source=none");
-        } else {
-            ESP_LOGI(TAG, "RISK source=baseline_warmup");
-        }
+        print_status_line(mq7_raw, mq8_raw, fsr402_raw, water_level_raw, sgp40_raw,
+                          &mq7_gas, &mq8_gas, state, alert, lora_ok);
 
         static uint32_t sample_number = 0;
         ++sample_number;
@@ -734,7 +692,7 @@ void app_main(void)
             tracker_finish_minute(&fsr402);
             tracker_finish_minute(&water_level);
             ESP_LOGI(TAG,
-                     "BASELINE UPDATED MQ7=%.1f raw R0=%.2fk MQ8=%.1f raw R0=%.2fk SGP40=%.1f raw ready=%s",
+                     "\nBASELINE UPDATED MQ7=%.1f raw R0=%.2fk MQ8=%.1f raw R0=%.2fk SGP40=%.1f raw ready=%s",
                      mq7.baseline, mq7_calibration.r0_kohm,
                      mq8.baseline, mq8_calibration.r0_kohm,
                      sgp40.baseline,
