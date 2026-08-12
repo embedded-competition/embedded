@@ -53,6 +53,7 @@
 #define WATER_LEVEL_RAW_DANGER_RATIO 1.50f
 #define SGP40_RAW_DROP_DANGER_RATIO  0.80f
 #define DANGER_HOLD_SAMPLES          3
+#define NORMALIZED_MAX               1000.0f
 
 /*
  * MQ voltage-divider assumptions:
@@ -307,6 +308,27 @@ static tracker_result_t tracker_add_sample(baseline_tracker_t *tracker, float ra
     return result;
 }
 
+static int normalize_absolute(float value, float full_scale)
+{
+    if (full_scale <= 0.0f) {
+        return 0;
+    }
+    return (int)fminf(NORMALIZED_MAX, fmaxf(0.0f,
+                     value * NORMALIZED_MAX / full_scale));
+}
+
+static int normalize_adc_level(float value)
+{
+    return normalize_absolute(value, ADC_RAW_MAX);
+}
+
+static int normalize_sgp40_level(float value)
+{
+    /* SGP40 raw signal falls as VOC increases, so invert the fixed range. */
+    return (int)fminf(NORMALIZED_MAX, fmaxf(0.0f,
+                     (1.0f - value / 65535.0f) * NORMALIZED_MAX));
+}
+
 static void tracker_finish_minute(baseline_tracker_t *tracker)
 {
     if (tracker->sample_count > 0) {
@@ -510,10 +532,11 @@ static void i2c_init_all(void)
 
 static void print_status_row(const char *name, const tracker_result_t *value,
                              const baseline_tracker_t *tracker, const char *state,
+                             int normalized, int normalized_baseline,
                              const char *extra)
 {
-    printf("\r\033[K%-12s raw=%8.0f filtered=%10.1f baseline=%10.1f state=%-15s%s\n",
-           name, value->raw, value->filtered, tracker->baseline, state, extra);
+    printf("%-12s value=%4d/1000 base=%4d/1000 state=%-15s%s\n",
+           name, normalized, normalized_baseline, state, extra);
 }
 
 static void print_status_block(const tracker_result_t *mq7_result, const baseline_tracker_t *mq7,
@@ -526,11 +549,9 @@ static void print_status_block(const tracker_result_t *mq7_result, const baselin
                                const baseline_tracker_t *water_level,
                                const char *overall_state, const char *alert, bool lora_ok)
 {
-    static bool first_draw = true;
-    if (!first_draw) {
-        printf("\033[%uA", (unsigned)(STATUS_BLOCK_LINE_COUNT + s_status_extra_lines));
-    }
-    first_draw = false;
+    /* Clear the previous block. Cursor-up redraw was easily disturbed by
+     * warning/log lines, which made MQ7 appear to accumulate indefinitely. */
+    printf("\033[2J\033[H");
     s_status_extra_lines = 0;
 
     char extra[24];
@@ -543,7 +564,9 @@ static void print_status_block(const tracker_result_t *mq7_result, const baselin
     } else {
         snprintf(extra, sizeof(extra), " ppm=%10s", "n/a");
     }
-    print_status_row("MQ7", mq7_result, mq7, mq7_state, extra);
+    print_status_row("MQ7", mq7_result, mq7, mq7_state,
+                     normalize_adc_level(mq7_result->filtered),
+                     mq7->ready ? normalize_adc_level(mq7->baseline) : 0, extra);
 
     const char *mq8_state = mq8_adc_saturated ? "ADC_SATURATED" :
                             (mq8->ready ? (mq8_result->accepted ? "OK" : "SPIKE_IGNORED")
@@ -553,18 +576,26 @@ static void print_status_block(const tracker_result_t *mq7_result, const baselin
     } else {
         snprintf(extra, sizeof(extra), " ppm=%10s", "n/a");
     }
-    print_status_row("MQ8", mq8_result, mq8, mq8_state, extra);
+    print_status_row("MQ8", mq8_result, mq8, mq8_state,
+                     normalize_adc_level(mq8_result->filtered),
+                     mq8->ready ? normalize_adc_level(mq8->baseline) : 0, extra);
 
     const char *sgp40_state = sgp40->ready ? (sgp40_result->accepted ? "OK" : "SPIKE_IGNORED") : "WARMUP";
-    print_status_row("SGP40", sgp40_result, sgp40, sgp40_state, "");
+    print_status_row("SGP40", sgp40_result, sgp40, sgp40_state,
+                     normalize_sgp40_level(sgp40_result->filtered),
+                     sgp40->ready ? normalize_sgp40_level(sgp40->baseline) : 0, "");
 
     const char *fsr402_state = fsr402->ready ? (fsr402_result->accepted ? "OK" : "SPIKE_IGNORED") : "WARMUP";
-    print_status_row("FSR402", fsr402_result, fsr402, fsr402_state, "");
+    print_status_row("FSR402", fsr402_result, fsr402, fsr402_state,
+                     normalize_adc_level(fsr402_result->filtered),
+                     fsr402->ready ? normalize_adc_level(fsr402->baseline) : 0, "");
 
     const char *water_level_state = water_level->ready
                                    ? (water_level_result->accepted ? "OK" : "SPIKE_IGNORED")
                                    : "WARMUP";
-    print_status_row("WATER_LEVEL", water_level_result, water_level, water_level_state, "");
+    print_status_row("WATER_LEVEL", water_level_result, water_level, water_level_state,
+                     normalize_adc_level(water_level_result->filtered),
+                     water_level->ready ? normalize_adc_level(water_level->baseline) : 0, "");
 
     printf("\r\033[K""STATE=%-8s ALERT=%-28s LORA=%s\n", overall_state, alert, lora_ok ? "OK" : "FAIL");
 
@@ -600,8 +631,10 @@ void app_main(void)
         .spike_ratio_threshold = 0.20f,
     };
     baseline_tracker_t fsr402 = {
-        .spike_abs_threshold = 150.0f,
-        .spike_ratio_threshold = 0.50f,
+        /* A pressure event is the intended signal for the FSR. Do not
+         * discard a fast change as a spike; tracker EMA still smooths it. */
+        .spike_abs_threshold = 4095.0f,
+        .spike_ratio_threshold = 10.0f,
     };
     baseline_tracker_t water_level = {
         .spike_abs_threshold = 150.0f,
@@ -734,11 +767,18 @@ void app_main(void)
             alert[alert_length - 1] = '\0';
         }
 
-        char payload[128];
+        /* Normalized fields make the CSV payload longer than the old raw-only
+         * format. Keep enough room for the MAC, all values, and ALERT fields. */
+        /* Keep the large LoRa CSV buffer out of app_main's limited task stack. */
+        static char payload[256];
         snprintf(payload, sizeof(payload),
-                 "MAC=%s,MQ7=%d,MQ8=%d,SGP=%u,FSR=%d,WATER=%d,ALERT=%s",
-                 mac_text, mq7_raw, mq8_raw, sgp40_raw,
-                 fsr402_raw, water_level_raw, alert);
+                 "MAC=%s,MQ7=%d,MQ8=%d,SGP=%d,FSR=%d,WATER=%d,ALERT=%s",
+                 mac_text,
+                 normalize_adc_level(mq7_result.filtered),
+                 normalize_adc_level(mq8_result.filtered),
+                 normalize_sgp40_level(sgp40_result.filtered),
+                 normalize_adc_level(fsr402_result.filtered),
+                 normalize_adc_level(water_level_result.filtered), alert);
         bool lora_ok = lora_send_sensor_data(payload);
 
         const char *state;
