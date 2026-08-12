@@ -549,9 +549,12 @@ static void print_status_block(const tracker_result_t *mq7_result, const baselin
                                const baseline_tracker_t *water_level,
                                const char *overall_state, const char *alert, bool lora_ok)
 {
-    /* Clear the previous block. Cursor-up redraw was easily disturbed by
-     * warning/log lines, which made MQ7 appear to accumulate indefinitely. */
-    printf("\033[2J\033[H");
+    static bool first_draw = true;
+    /* Reuse the same six terminal lines instead of appending a new block. */
+    if (!first_draw) {
+        printf("\033[%uA", (unsigned)STATUS_BLOCK_LINE_COUNT);
+    }
+    first_draw = false;
     s_status_extra_lines = 0;
 
     char extra[24];
@@ -673,24 +676,19 @@ void app_main(void)
         uint16_t sgp40_raw = 0;
 
         if (adc_read_raw(MQ7_ADC_CHANNEL, &mq7_raw) != ESP_OK) {
-            ESP_LOGW(TAG, "MQ7 read failed");
-            ++s_status_extra_lines;
+            mq7_raw = 0;
         }
         if (adc_read_raw(MQ8_ADC_CHANNEL, &mq8_raw) != ESP_OK) {
-            ESP_LOGW(TAG, "MQ8 read failed");
-            ++s_status_extra_lines;
+            mq8_raw = 0;
         }
         if (adc_read_raw(FSR402_ADC_CHANNEL, &fsr402_raw) != ESP_OK) {
-            ESP_LOGW(TAG, "FSR402 read failed");
-            ++s_status_extra_lines;
+            fsr402_raw = 0;
         }
         if (adc_read_raw(WATER_LEVEL_ADC_CHANNEL, &water_level_raw) != ESP_OK) {
-            ESP_LOGW(TAG, "water level read failed");
-            ++s_status_extra_lines;
+            water_level_raw = 0;
         }
         if (sgp40_read_raw(&sgp40_raw) != ESP_OK) {
-            ESP_LOGW(TAG, "SGP40 read failed");
-            ++s_status_extra_lines;
+            sgp40_raw = 0;
         }
 
         tracker_result_t mq7_result = tracker_add_sample(&mq7, (float)mq7_raw);
@@ -807,13 +805,6 @@ void app_main(void)
             tracker_finish_minute(&sgp40);
             tracker_finish_minute(&fsr402);
             tracker_finish_minute(&water_level);
-            ESP_LOGI(TAG,
-                     "BASELINE UPDATED MQ7=%.1f raw R0=%.2fk MQ8=%.1f raw R0=%.2fk SGP40=%.1f raw ready=%s",
-                     mq7.baseline, mq7_calibration.r0_kohm,
-                     mq8.baseline, mq8_calibration.r0_kohm,
-                     sgp40.baseline,
-                     (mq7.ready && mq8.ready && sgp40.ready) ? "yes" : "no");
-            ++s_status_extra_lines;
         }
 
         vTaskDelayUntil(&next_sample, pdMS_TO_TICKS(SAMPLE_PERIOD_MS));
