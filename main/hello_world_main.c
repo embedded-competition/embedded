@@ -209,6 +209,37 @@ static bool lora_send_command(const char *command, const char *expected_reply)
     return false;
 }
 
+#define PACKET_SIZE 26
+
+static uint16_t packet_crc16(const uint8_t *data, size_t length)
+{
+    uint16_t crc = 0xFFFF;
+    for (size_t i = 0; i < length; ++i) {
+        crc ^= (uint16_t)data[i] << 8;
+        for (int bit = 0; bit < 8; ++bit) {
+            crc = (crc & 0x8000) ? (uint16_t)((crc << 1) ^ 0x1021) : (uint16_t)(crc << 1);
+        }
+    }
+    return crc;
+}
+
+static size_t base64url_encode(const uint8_t *input, size_t input_len, char *output)
+{
+    static const char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    size_t out = 0;
+    for (size_t i = 0; i < input_len; i += 3) {
+        uint32_t value = (uint32_t)input[i] << 16;
+        if (i + 1 < input_len) value |= (uint32_t)input[i + 1] << 8;
+        if (i + 2 < input_len) value |= input[i + 2];
+        output[out++] = alphabet[(value >> 18) & 0x3F];
+        output[out++] = alphabet[(value >> 12) & 0x3F];
+        if (i + 1 < input_len) output[out++] = alphabet[(value >> 6) & 0x3F];
+        if (i + 2 < input_len) output[out++] = alphabet[value & 0x3F];
+    }
+    output[out] = '\0';
+    return out;
+}
+
 static void lora_init_module(void)
 {
     char command[64];
@@ -225,13 +256,32 @@ static void lora_init_module(void)
     lora_send_command(command, "+OK");
 }
 
-static bool lora_send_sensor_data(const char *payload)
+static bool lora_send_sensor_data(const uint8_t *packet, size_t packet_len)
 {
-    char command[180];
-    int length = (int)strlen(payload);
+    char payload[40];
+    char command[100];
+    int length = (int)base64url_encode(packet, packet_len, payload);
     snprintf(command, sizeof(command), "AT+SEND=%d,%d,%s",
              LORA_RECEIVER_ADDRESS, length, payload);
     return lora_send_command(command, "+OK");
+}
+
+static bool lora_send_sensor_packet(const uint8_t mac[6], uint16_t mq7, uint16_t mq8,
+                                    uint16_t pressure, uint16_t water, uint16_t voc,
+                                    float lat, float lon)
+{
+    uint8_t packet[PACKET_SIZE] = {0};
+    memcpy(packet, mac, 6);
+    memcpy(packet + 6, &mq7, 2);
+    memcpy(packet + 8, &mq8, 2);
+    memcpy(packet + 10, &pressure, 2);
+    memcpy(packet + 12, &water, 2);
+    memcpy(packet + 14, &voc, 2);
+    memcpy(packet + 16, &lat, 4);
+    memcpy(packet + 20, &lon, 4);
+    uint16_t crc = packet_crc16(packet, 24);
+    memcpy(packet + 24, &crc, 2);
+    return lora_send_sensor_data(packet, sizeof(packet));
 }
 
 static float sort_and_trimmed_mean(const float *input, size_t count)
@@ -608,12 +658,8 @@ static void print_status_block(const tracker_result_t *mq7_result, const baselin
 void app_main(void)
 {
     uint8_t device_mac[6] = {0};
-    char mac_text[18];
 
     ESP_ERROR_CHECK(esp_read_mac(device_mac, ESP_MAC_WIFI_STA));
-    snprintf(mac_text, sizeof(mac_text), "%02X:%02X:%02X:%02X:%02X:%02X",
-             device_mac[0], device_mac[1], device_mac[2],
-             device_mac[3], device_mac[4], device_mac[5]);
 
     adc_init_all();
     i2c_init_all();
@@ -765,19 +811,15 @@ void app_main(void)
             alert[alert_length - 1] = '\0';
         }
 
-        /* Normalized fields make the CSV payload longer than the old raw-only
-         * format. Keep enough room for the MAC, all values, and ALERT fields. */
-        /* Keep the large LoRa CSV buffer out of app_main's limited task stack. */
-        static char payload[256];
-        snprintf(payload, sizeof(payload),
-                 "MAC=%s,MQ7=%d,MQ8=%d,SGP=%d,FSR=%d,WATER=%d,ALERT=%s",
-                 mac_text,
-                 normalize_adc_level(mq7_result.filtered),
-                 normalize_adc_level(mq8_result.filtered),
-                 normalize_sgp40_level(sgp40_result.filtered),
-                 normalize_adc_level(fsr402_result.filtered),
-                 normalize_adc_level(water_level_result.filtered), alert);
-        bool lora_ok = lora_send_sensor_data(payload);
+        uint16_t mq7_value = (uint16_t)normalize_adc_level(mq7_result.filtered);
+        uint16_t mq8_value = (uint16_t)normalize_adc_level(mq8_result.filtered);
+        uint16_t pressure_value = (uint16_t)normalize_adc_level(fsr402_result.filtered);
+        uint16_t water_value = (uint16_t)normalize_adc_level(water_level_result.filtered);
+        uint16_t voc_value = (uint16_t)normalize_sgp40_level(sgp40_result.filtered);
+        /* GPS is not connected yet; these fields are reserved as 0.0f. */
+        bool lora_ok = lora_send_sensor_packet(device_mac, mq7_value, mq8_value,
+                                               pressure_value, water_value, voc_value,
+                                               0.0f, 0.0f);
 
         const char *state;
         if (mq7_danger || mq8_danger || fsr402_danger || water_level_danger || sgp40_danger) {
