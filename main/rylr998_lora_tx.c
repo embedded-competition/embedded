@@ -14,61 +14,19 @@
 #define LORA_UART_PORT          UART_NUM_1
 #define LORA_UART_TX_GPIO       GPIO_NUM_4
 #define LORA_UART_RX_GPIO       GPIO_NUM_5
-#define LORA_UART_BAUD_RATE     115200
+#define LORA_UART_BAUD_RATE     9600
 #define LORA_UART_BUF_SIZE      512
+#define MAX_PAYLOAD_LENGTH      128
 
-#define LORA_NODE_ADDRESS       2
+#define LORA_NODE_ADDRESS       1
+#define LORA_RECEIVER_ADDRESS   2
 #define LORA_NETWORK_ID         18
 #define LORA_BAND_HZ            922100000 /* 922.1 MHz */
 #define LORA_PARAMETER          "9,7,1,12"
 
 #define COMMAND_TIMEOUT_MS      1500
 
-static const char *TAG = "RYLR998_RX";
-
-#define PACKET_SIZE 26
-
-static uint16_t packet_crc16(const uint8_t *data, size_t length)
-{
-    uint16_t crc = 0xFFFF;
-    for (size_t i = 0; i < length; ++i) {
-        crc ^= (uint16_t)data[i] << 8;
-        for (int bit = 0; bit < 8; ++bit) {
-            crc = (crc & 0x8000) ? (uint16_t)((crc << 1) ^ 0x1021) : (uint16_t)(crc << 1);
-        }
-    }
-    return crc;
-}
-
-static int base64url_value(char c)
-{
-    if (c >= 'A' && c <= 'Z') return c - 'A';
-    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
-    if (c >= '0' && c <= '9') return c - '0' + 52;
-    if (c == '-') return 62;
-    if (c == '_') return 63;
-    return -1;
-}
-
-static int base64url_decode(const char *input, uint8_t *output, size_t output_size)
-{
-    size_t len = strlen(input), out = 0;
-    uint32_t value = 0;
-    int bits = 0;
-    for (size_t i = 0; i < len; ++i) {
-        int digit = base64url_value(input[i]);
-        if (digit < 0) return -1;
-        value = (value << 6) | (uint32_t)digit;
-        bits += 6;
-        if (bits >= 8) {
-            bits -= 8;
-            if (out >= output_size) return -1;
-            output[out++] = (uint8_t)(value >> bits);
-            value &= (1U << bits) - 1U;
-        }
-    }
-    return (int)out;
-}
+static const char *TAG = "RYLR998_TX";
 
 static void lora_uart_init(void)
 {
@@ -163,55 +121,55 @@ static void lora_configure_module(void)
     snprintf(command, sizeof(command), "AT+PARAMETER=%s", LORA_PARAMETER);
     lora_send_command(command, "+OK");
 
-    ESP_LOGI(TAG, "RX ready: my_address=%d", LORA_NODE_ADDRESS);
+    ESP_LOGI(TAG, "TX ready: my_address=%d receiver_address=%d",
+             LORA_NODE_ADDRESS, LORA_RECEIVER_ADDRESS);
 }
 
-static void handle_received_line(const char *line)
+static bool lora_send_payload(const char *payload)
 {
-    int sender = 0;
-    int payload_len = 0;
-    int rssi = 0;
-    int snr = 0;
-    char payload[64] = {0};
+    char command[MAX_PAYLOAD_LENGTH + 48];
+    int payload_len = (int)strlen(payload);
 
-    if (sscanf(line, "+RCV=%d,%d,%63[^,],%d,%d", &sender, &payload_len,
-               payload, &rssi, &snr) != 5) {
-        ESP_LOGI(TAG, "RX raw: %s", line);
-        return;
+    if (payload_len == 0 || payload_len > MAX_PAYLOAD_LENGTH) {
+        ESP_LOGW(TAG, "Payload length must be 1-%d bytes", MAX_PAYLOAD_LENGTH);
+        return false;
     }
 
-    uint8_t packet[PACKET_SIZE];
-    if (payload_len != 35 || base64url_decode(payload, packet, sizeof(packet)) != PACKET_SIZE) {
-        ESP_LOGW(TAG, "Invalid packet from address=%d len=%d", sender, payload_len);
-        return;
-    }
-    uint16_t received_crc;
-    memcpy(&received_crc, packet + 24, 2);
-    if (packet_crc16(packet, 24) != received_crc) {
-        ESP_LOGW(TAG, "CRC error from address=%d", sender);
-        return;
-    }
-    uint16_t mq7, mq8, pressure, water, voc;
-    float lat, lon;
-    memcpy(&mq7, packet + 6, 2); memcpy(&mq8, packet + 8, 2);
-    memcpy(&pressure, packet + 10, 2); memcpy(&water, packet + 12, 2);
-    memcpy(&voc, packet + 14, 2); memcpy(&lat, packet + 16, 4); memcpy(&lon, packet + 20, 4);
-    ESP_LOGI(TAG, "OK from=%d MAC=%02X:%02X:%02X:%02X:%02X:%02X MQ7=%u MQ8=%u pressure=%u water=%u VOC=%u lat=%.6f lon=%.6f RSSI=%d SNR=%d",
-             sender, packet[0], packet[1], packet[2], packet[3], packet[4], packet[5],
-             mq7, mq8, pressure, water, voc, lat, lon, rssi, snr);
+    snprintf(command, sizeof(command), "AT+SEND=%d,%d,%s",
+             LORA_RECEIVER_ADDRESS, payload_len, payload);
+    return lora_send_command(command, "+OK");
 }
 
 void app_main(void)
 {
-    char rx_line[160];
+    char payload[MAX_PAYLOAD_LENGTH + 1];
 
     lora_uart_init();
     lora_configure_module();
 
+    ESP_LOGI(TAG, "Type a line in the USB serial monitor and press Enter to send.");
+    ESP_LOGI(TAG, "Destination=%d, max payload=%d bytes",
+             LORA_RECEIVER_ADDRESS, MAX_PAYLOAD_LENGTH);
+
     while (true) {
-        int len = lora_read_line(rx_line, sizeof(rx_line), pdMS_TO_TICKS(1000));
-        if (len > 0) {
-            handle_received_line(rx_line);
+        if (fgets(payload, sizeof(payload), stdin) == NULL) {
+            /* USB Serial/JTAG can report a temporary EOF before monitor input
+             * is available. Keep the firmware alive and try again. */
+            clearerr(stdin);
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+
+        payload[strcspn(payload, "\r\n")] = '\0';
+
+        if (payload[0] == '\0') {
+            continue;
+        }
+
+        if (lora_send_payload(payload)) {
+            ESP_LOGI(TAG, "Sent data: %s", payload);
+        } else {
+            ESP_LOGW(TAG, "Send failed: %s", payload);
         }
     }
 }

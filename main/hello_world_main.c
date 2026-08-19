@@ -37,7 +37,7 @@
 #define LORA_NODE_ADDRESS            1
 #define LORA_RECEIVER_ADDRESS        2
 #define LORA_NETWORK_ID              18
-#define LORA_BAND_HZ                 915000000
+#define LORA_BAND_HZ                 922100000 /* 922.1 MHz */
 #define LORA_PARAMETER                "9,7,1,12"
 
 #define SAMPLE_PERIOD_MS             1000
