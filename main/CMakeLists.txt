@@ -8,5 +8,5 @@ idf_component_register(
          "gps_link.c"
          "status_display.c"
     INCLUDE_DIRS "."
-    PRIV_REQUIRES driver esp_driver_gpio esp_driver_i2c esp_adc
+    PRIV_REQUIRES driver esp_driver_gpio esp_driver_i2c esp_driver_uart esp_adc
 )

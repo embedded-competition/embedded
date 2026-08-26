@@ -8,5 +8,5 @@ void gps_link_init(void);
  * call once per loop iteration. */
 void gps_link_update(void);
 
-/* Returns true and fills *lat/*lon if the GPS currently has a fix. */
+/* Returns true and fills *lat and *lon if the GPS currently has a fix. */
 bool gps_link_get_fix(float *lat, float *lon);
