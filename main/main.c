@@ -59,8 +59,11 @@ void app_main(void)
         .spike_ratio_threshold = 10.0f,
     };
     baseline_tracker_t water_level = {
-        .spike_abs_threshold = 150.0f,
-        .spike_ratio_threshold = 0.50f,
+        /* Water level is used as a binary wet/dry check. A dry->wet
+         * transition is a real, sustained step change, not noise to
+         * reject -- do not spike-filter it out. */
+        .spike_abs_threshold = 4095.0f,
+        .spike_ratio_threshold = 10.0f,
     };
 
     mq_calibration_t mq7_calibration = {
@@ -211,7 +214,13 @@ void app_main(void)
             tracker_finish_minute(&mq8);
             tracker_finish_minute(&sgp40);
             tracker_finish_minute(&fsr402);
-            tracker_finish_minute(&water_level);
+            /* Freeze the water baseline once the initial (assumed-dry)
+             * calibration window locks in, the same way mq_gas locks R0.
+             * Otherwise a prolonged flood would slowly become the new
+             * "normal" baseline and the wet/dry check would stop firing. */
+            if (!water_level.ready) {
+                tracker_finish_minute(&water_level);
+            }
         }
 
         vTaskDelayUntil(&next_sample, pdMS_TO_TICKS(SAMPLE_PERIOD_MS));
